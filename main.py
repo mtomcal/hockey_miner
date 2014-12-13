@@ -44,17 +44,18 @@ class MappedRow():
 
 
 def db_setup():
-    connection = Connection(CONFIG.mongoURI)
+    connection = Connection(CONFIG['mongoURI'])
 
     @connection.register
     class PlayerModel(Document):
         __collection__ = 'players'
+        __database__ = 'nhl'
         structure = {
             "name": basestring,
             "goals": int,
             "assists": int
         }
-    return {"PlayerModel": PlayerModel}
+    return connection
 
 
 def execute():
@@ -72,7 +73,14 @@ def execute():
             stat_row = [field.text.strip() for field in row]
             stat_rows.append(MappedRow(stat_row, stat_keys))
 
-        [pprint("Num: %s, Player: %s, Goals: %s" % (row[''], row['Player'], row['G'])) for row in stat_rows]
+        Models = db_setup()
+
+        for row in stat_rows:
+            player = Models.PlayerModel()
+            player['name'] = row['Player']
+            player['goals'] = int(row['G'])
+            player['assists'] = int(row['A'])
+            player.save()
 
 if __name__ == '__main__':
     execute()
