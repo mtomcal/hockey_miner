@@ -1,6 +1,10 @@
+from mongokit import *
 from pprint import pprint
-import requests
 from bs4 import BeautifulSoup
+import requests
+import json
+
+CONFIG = json.load(open('./config.json'))
 
 BASE_URL = 'http://www.nhl.com/ice/playerstats.htm'
 USER_AGENT = "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2228.0 Safari/537.36"
@@ -38,6 +42,21 @@ class MappedRow():
         return str(self.get_dict())
 
 
+
+def db_setup():
+    connection = Connection(CONFIG.mongoURI)
+
+    @connection.register
+    class PlayerModel(Document):
+        __collection__ = 'players'
+        structure = {
+            "name": basestring,
+            "goals": int,
+            "assists": int
+        }
+    return {"PlayerModel": PlayerModel}
+
+
 def execute():
     headers = {'User-Agent': USER_AGENT}
     response = requests.get(BASE_URL, headers=headers)
@@ -53,7 +72,7 @@ def execute():
             stat_row = [field.text.strip() for field in row]
             stat_rows.append(MappedRow(stat_row, stat_keys))
 
-        [pprint("Player: %s, Goals: %s" % (row['Player'], row['G'])) for row in stat_rows]
+        [pprint("Num: %s, Player: %s, Goals: %s" % (row[''], row['Player'], row['G'])) for row in stat_rows]
 
 if __name__ == '__main__':
     execute()
