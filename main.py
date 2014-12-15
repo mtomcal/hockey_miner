@@ -75,10 +75,13 @@ class FetchPage():
         response = requests.get(self.url, headers=headers)
         if response.status_code == requests.codes.ok:
             soup = BeautifulSoup(response.content)
-            self.parser(self, soup)
+            return self.parser(self, soup)
+
+    def __repr__(self):
+        return "<FetchPage url=%s, parser=%s" % (self.url, self.parser)
 
 
-def home_parser(self, data):
+def stat_parser(self, data):
     table = data.select('table.data.stats tr')
     stat_keys = [row.text.strip() for row in table[0].select('th')]
     stat_keys.append('uri')
@@ -103,12 +106,27 @@ def home_parser(self, data):
         except Exception:
             pprint("Issue saving %s" % player['name'])
 
+def pagination_parser(self, data):
+    last_link = data.select('div.pages > a')
+    """There are seven pagination links. Get the last one."""
+    link_text = last_link[7].get('href')
+    """Assuming double digit page number at end of url"""
+    last_page = int(link_text[-2:])
+    return last_page
+
+
 
 def execute():
-    home = FetchPage(BASE_URL, parser=home_parser)
-    home.fetch()
+    base = FetchPage(BASE_URL, parser=pagination_parser)
+    last_page = base.fetch()
+    queue = []
+    for i in range(1, last_page + 1):
+        paged_url_base = "http://www.nhl.com/ice/playerstats.htm?fetchKey=20152ALLSASAll&viewName=summary&sort=points&pg="
+        queue.append(FetchPage(paged_url_base + str(i), parser=stat_parser))
 
-
+    for req in queue:
+        pprint(req)
+        req.fetch()
 
 if __name__ == '__main__':
     execute()
