@@ -9,11 +9,29 @@ CONFIG = json.load(open('./config.json'))
 BASE_URL = 'http://www.nhl.com/ice/playerstats.htm'
 USER_AGENT = "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2228.0 Safari/537.36"
 
+def db_setup():
+    connection = Connection(CONFIG['mongoURI'])
+
+    @connection.register
+    class PlayerModel(Document):
+        __collection__ = 'players'
+        __database__ = 'nhl'
+        structure = {
+            "name": basestring,
+            "team": basestring,
+            "pos": basestring,
+            "uri": basestring
+        }
+
+    return connection
+
+Models = db_setup()
 
 class MappedRow():
     """
     MappedRow is a convenience class for taking an array with names and mapping it to an array of values
     """
+
     def __init__(self, values, keys):
         """
         Pass in an array of values and an array of keys
@@ -42,45 +60,55 @@ class MappedRow():
         return str(self.get_dict())
 
 
+class FetchPage():
+    def __init__(self, url, parser=None):
+        if hasattr(parser, '__call__'):
+            self.parser = parser
+        self.url = url
 
-def db_setup():
-    connection = Connection(CONFIG['mongoURI'])
+    def set_parser(self, parser):
+        if hasattr(parser, '__call__'):
+            self.parser = parser
 
-    @connection.register
-    class PlayerModel(Document):
-        __collection__ = 'players'
-        __database__ = 'nhl'
-        structure = {
-            "name": basestring,
-            "goals": int,
-            "assists": int
-        }
-    return connection
+    def fetch(self):
+        headers = {'User-Agent': USER_AGENT}
+        response = requests.get(self.url, headers=headers)
+        if response.status_code == requests.codes.ok:
+            soup = BeautifulSoup(response.content)
+            self.parser(self, soup)
+
+
+def home_parser(self, data):
+    table = data.select('table.data.stats tr')
+    stat_keys = [row.text.strip() for row in table[0].select('th')]
+    stat_keys.append('uri')
+    # Skipping the navigation row
+    table = table[2:]
+    stat_rows = []
+    # Yes I know its O^2
+    for row in table:
+        stat_row = [field.text.strip() for field in row]
+        link = row.select('a')[0]
+        stat_row.append(link.get('href'))
+        stat_rows.append(MappedRow(stat_row, stat_keys))
+
+    for row in stat_rows:
+        player = Models.PlayerModel()
+        player['name'] = row['Player']
+        player['team'] = row['Team']
+        player['pos'] = row['Pos']
+        player['uri'] = row['uri']
+        try:
+            player.save()
+        except Exception:
+            pprint("Issue saving %s" % player['name'])
 
 
 def execute():
-    headers = {'User-Agent': USER_AGENT}
-    response = requests.get(BASE_URL, headers=headers)
-    if response.status_code == requests.codes.ok:
-        soup = BeautifulSoup(response.content)
-        table = soup.select('table.data.stats tr')
-        stat_keys = [row.text.strip() for row in table[0].select('th')]
-        # Skipping the navigation row
-        table = table[2:]
-        stat_rows = []
-        # Yes I know its O^2
-        for row in table:
-            stat_row = [field.text.strip() for field in row]
-            stat_rows.append(MappedRow(stat_row, stat_keys))
+    home = FetchPage(BASE_URL, parser=home_parser)
+    home.fetch()
 
-        Models = db_setup()
 
-        for row in stat_rows:
-            player = Models.PlayerModel()
-            player['name'] = row['Player']
-            player['goals'] = int(row['G'])
-            player['assists'] = int(row['A'])
-            player.save()
 
 if __name__ == '__main__':
     execute()
