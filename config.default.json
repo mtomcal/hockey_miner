@@ -1,3 +1,5 @@
 {
-  "mongoURI": ""
+  "mongo_uri": "",
+  "base_url": "",
+  "user_agent": ""
 }
